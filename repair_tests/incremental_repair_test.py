@@ -49,8 +49,12 @@ class TestIncRepair(Tester):
         node2.flush()
 
         node3.start(wait_other_notice=True)
+        if node3.get_cassandra_version() < '2.2':
+            log_file = 'system.log'
+        else:
+            log_file = 'debug.log'
+        node3.watch_log_for("Initializing keyspace1.standard1", filename=log_file)
         time.sleep(3)
-
         if cluster.version() >= "2.2":
             node3.repair()
         else:
