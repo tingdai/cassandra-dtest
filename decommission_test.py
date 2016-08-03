@@ -59,7 +59,6 @@ class TestDecommission(Tester):
 
     	Test decommission operation is resumable
     	"""
-
     	# Set-up cluster with 3 nodes
     	cluster = self.cluster
     	cluster.set_configuration_options(values={'stream_throughput_outbound_megabits_per_sec': 1})
