@@ -30,7 +30,7 @@ class TestDecommission(Tester):
         mark = node2.mark_log()
         
         def decommission():
-        	node2.nodetool('decommission')
+            node2.nodetool('decommission')
 
         # Launch first decommission in a external thread
         t = Thread(target=decommission)
@@ -41,15 +41,15 @@ class TestDecommission(Tester):
 
         # Launch a second decommission, should fail
         with self.assertRaises(NodetoolError):
-        	node2.nodetool('decommission')
+            node2.nodetool('decommission')
 
         # Check data is correctly fowarded to node1 after node2 is decommissioned
         t.join()
         node2.watch_log_for('DECOMMISSIONED', from_mark=mark)
         node1 = cluster.nodes['node1']
         stdout, stderr = node1.stress(['read', 'n=10k', 'cl=ONE', 'no-warmup', '-schema',
-                                       'replication(factor=2)', '-rate', 'threads=8'],
-                                       capture_output=True)
+                                    'replication(factor=2)', '-rate', 'threads=8'],
+                                        capture_output=True)
         if stdout is not None:
             self.assertNotIn("FAILURE", stdout)
 
@@ -72,15 +72,15 @@ class TestDecommission(Tester):
 
         # Kill node1 while decommissioning to make fist decommission fail
         def InterruptDecommission():
-        	node2.watch_log_for('DECOMMISSIONING', filename='debug.log')
-        	node1.stop(gently=False)
+            node2.watch_log_for('DECOMMISSIONING', filename='debug.log')
+            node1.stop(gently=False)
 
         t = Thread(target=InterruptDecommission)
         t.start()
 
         # Execute first rebuild, should fail
         with self.assertRaises(NodetoolError):
-        	node2.nodetool('decommission')
+            node2.nodetool('decommission')
 
         t.join()
 
@@ -94,8 +94,8 @@ class TestDecommission(Tester):
         node2.watch_log_for('Skipping transferred range', from_mark=mark, filename='debug.log')
 
         # Check data is correctly forwarded to node1
-        stdout, stderr =  node1.stress(['read', 'n=10k', 'cl=TWO', 'no-warmup', '-schema',
-        								'replication(factor=2)', '-rate', 'threads=8'],
+        stdout, stderr =  node1.stress(['read', 'n=10k', 'cl=ONE', 'no-warmup', '-schema',
+                                        'replication(factor=2)', '-rate', 'threads=8'],
                                         capture_output=True)
 
         if stdout is not None:
