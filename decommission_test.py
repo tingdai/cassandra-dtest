@@ -21,35 +21,35 @@ class TestDecommission(Tester):
     	"""
     	# Create 2 nodes for decommission operation
     	cluster = self.cluster
-        cluster.populate(2).start(wait_other_notice=True)
-
-        node2 = cluster.nodes['node2']
-        node2.stress(['write', 'n=10K', 'no-warmup', 'cl=ONE', '-schema', 'replication(factor=1)', '-rate', 'threads=50'])
+    	cluster.populate(2).start(wait_other_notice=True)
+    	
+    	node2 = cluster.nodes['node2']
+    	node2.stress(['write', 'n=10K', 'no-warmup', 'cl=ONE', '-schema', 'replication(factor=1)', '-rate', 'threads=50'])
         cluster.flush()
-
+        
         mark = node2.mark_log()
         
         def decommission():
             node2.nodetool('decommission')
-
+            
         # Launch first decommission in a external thread
         t = Thread(target=decommission)
         t.start()
-
+        
         # Make sure first decommission is initialized before second decommission
         time.sleep(1)
-
+        
         # Launch a second decommission, should fail
         with self.assertRaises(NodetoolError):
             node2.nodetool('decommission')
-
+            
         # Check data is correctly fowarded to node1 after node2 is decommissioned
         t.join()
         node2.watch_log_for('DECOMMISSIONED', from_mark=mark)
         node1 = cluster.nodes['node1']
         stdout, stderr = node1.stress(['read', 'n=10k', 'cl=ONE', 'no-warmup', '-schema',
-                                    'replication(factor=2)', '-rate', 'threads=8'],
-                                        capture_output=True)
+                                       'replication(factor=2)', '-rate', 'threads=8'],
+                                       capture_output=True)
         if stdout is not None:
             self.assertNotIn("FAILURE", stdout)
 
