@@ -43,7 +43,7 @@ class TestDecommission(Tester):
         with self.assertRaises(NodetoolError):
             node2.nodetool('decommission')
             
-        # Check data is correctly fowarded to node1 after node2 is decommissioned
+        # Check data is correctly forwarded to node1 after node2 is decommissioned
         t.join()
         node2.watch_log_for('DECOMMISSIONED', from_mark=mark)
         node1 = cluster.nodes['node1']
@@ -70,7 +70,7 @@ class TestDecommission(Tester):
         node2.stress(['write', 'n=10K', 'no-warmup', 'cl=TWO', '-schema', 'replication(factor=2)', '-rate', 'threads=50'])
         cluster.flush()
 
-        # Kill node1 while decommissioning to make fist decommission fail
+        # Kill node1 while decommissioning to make first decommission fail
         def InterruptDecommission():
             node2.watch_log_for('DECOMMISSIONING', filename='debug.log')
             node1.stop(gently=False)
@@ -93,7 +93,7 @@ class TestDecommission(Tester):
         node2.watch_log_for('DECOMMISSIONED', from_mark=mark)
         node2.watch_log_for('Skipping transferred range', from_mark=mark, filename='debug.log')
 
-        # Check data is correctly forwarded to node1
+        # Check data is correctly forwarded to node1 and node2
         stdout, stderr =  node1.stress(['read', 'n=10k', 'cl=ONE', 'no-warmup', '-schema',
                                         'replication(factor=2)', '-rate', 'threads=8'],
                                         capture_output=True)
