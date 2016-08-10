@@ -67,6 +67,7 @@ class TestMaterializedViews(Tester):
         session.execute(insert_stmt + "('user2', 'ch@ngem3b', 'm', 'CA', 1971);")
         session.execute(insert_stmt + "('user3', 'ch@ngem3c', 'f', 'FL', 1978);")
         session.execute(insert_stmt + "('user4', 'ch@ngem3d', 'm', 'TX', 1974);")
+        self._replay_batchlogs()
 
     def _replay_batchlogs(self):
         debug("Replaying batchlog on all nodes")
