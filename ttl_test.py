@@ -205,6 +205,27 @@ class TestTTL(Tester):
         self.smart_sleep(start, 4)
         assert_all(self.session1, "SELECT * FROM ttl_table;", [[1, 42, None, None]])
 
+    @since('4.0')
+    def test_ttl_with_same_timestamp(self):
+        """
+        Test that when rows having same timestamp, the livenessInfo with greater localDeletionTime will supersede another.
+        CASSANDRA-13127
+        """
+
+        self.prepare()
+
+        start = time.time()
+        self.session1.execute("INSERT INTO ttl_table (key, col1, col2, col3) VALUES ({}, {}, {}, {}) USING TTL 0 AND timestamp 100;".format(1, 1, 1, 1))
+        for node in self.cluster.nodelist():
+            node.flush()
+        self.session1.execute("INSERT INTO ttl_table (key, col1, col2, col3) VALUES ({}, {}, {}, {}) USING TTL 3 AND timestamp 100;".format(1, 1, 1, 1))
+        for node in self.cluster.nodelist():
+            node.flush()
+        self.smart_sleep(start, 5)
+
+        # The data should be removed by ttl
+        assert_none(self.session1, "SELECT * FROM ttl_table;")
+
     @since('3.6')
     def set_ttl_to_zero_to_default_ttl_test(self):
         """

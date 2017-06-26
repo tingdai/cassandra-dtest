@@ -906,6 +906,48 @@ class TestMaterializedViews(Tester):
                 cl=ConsistencyLevel.ALL
             )
 
+    @since('4.0')
+    def view_ttl_test_by_update(self):
+        """
+        Add mote tests that a materialized views properly TTLed via update query
+        @jira_ticket CASSANDRA-13127
+        """
+        session = self.prepare(rf=3, nodes=3)
+
+        session.execute('USE ks')
+
+        session.execute("CREATE TABLE t (a int, b int, c int, PRIMARY KEY(a, b))")
+        session.execute(("CREATE MATERIALIZED VIEW mv AS SELECT a, b FROM t "
+                         "WHERE a IS NOT NULL AND b IS NOT NULL PRIMARY KEY (b, a)"))
+
+        session.cluster.control_connection.wait_for_schema_agreement()
+
+        # Set initial values TTL = 3
+        session.execute("INSERT INTO t (a, b) VALUES (0, 0) USING TTL 3")
+        for node in self.cluster.nodelist():
+            node.flush()
+
+        # update normal column with greater TTL
+        # it should generate view updates
+        session.execute("UPDATE t USING TTL 1000 SET c = 0 WHERE a = 0 and b = 0;")
+        for node in self.cluster.nodelist():
+            node.flush()
+
+        debug('Wait for TTL(3) to expire')
+        time.sleep(3)
+
+        assert_one(
+            session,
+            "SELECT * FROM mv",
+            [0, 0]
+        )
+
+        assert_one(
+            session,
+            "SELECT * FROM t",
+            [0, 0, 0]
+        )
+
     def view_tombstone_test(self):
         """
         Test that a materialized views properly tombstone
