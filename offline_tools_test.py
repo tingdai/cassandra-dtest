@@ -10,6 +10,8 @@ from ccmlib.node import ToolError
 from dtest import Tester, debug, create_ks
 from tools.decorators import since
 
+from cassandra.policies import FallthroughRetryPolicy
+
 
 class TestOfflineTools(Tester):
 
@@ -432,6 +434,110 @@ class TestOfflineTools(Tester):
         self.assertEqual(len(s), 2)
         dumped_keys = set(row[0] for row in s)
         self.assertEqual(set(['1', '2']), dumped_keys)
+
+    @since('4.0')
+    def sstabledump_complex_type_test(self):
+        """
+        Test that sstabledump against frozen set/list/map/udf/tuple
+        """
+        cluster = self.cluster
+        # disable JBOD conf since the test expects exactly one SSTable to be written.
+        cluster.set_datadir_count(1)
+        cluster.populate(1).start(wait_for_binary_proto=True)
+        node1 = cluster.nodelist()[0]
+        session = self.patient_cql_connection(node1)
+        create_ks(session, 'ks', 1)
+        session.execute('CREATE TYPE ks.user_type (city text, postcode int, phones set<text>);')
+        session.execute('CREATE TYPE ks.simple_type (city text, postcode int);')
+        session.execute('create table ks.cf (key int PRIMARY KEY, list_f frozen<list<int>>, set_f frozen<set<int>>, map_f frozen<map<int,int>>,'
+                        'tuple_f frozen<tuple<int,int>>, user_type_f frozen<user_type>, list_v list<int>, set_v set<int>, map_v map<int,int>,'
+                        'tuple_v tuple<int,int>, user_type_v simple_type)')
+        statement = session.prepare('insert into ks.cf (key, list_f, set_f, map_f, tuple_f, user_type_f, list_v, set_v, map_v, tuple_v, user_type_v)'
+                                    'values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);')
+
+        statement.retry_policy = FallthroughRetryPolicy()
+
+        class FrozenUserType(object):
+            def __init__(self, city, postcode, phones):
+                self.city = city
+                self.postcode = postcode
+                self.phones = phones
+
+        class NonFrozenUserType(object):
+            def __init__(self, city, postcode):
+                self.city = city
+                self.postcode = postcode
+
+        session.execute(statement, [1, [1, 2, 3], {1, 2, 3}, {1: 1, 2: 2, 3: 3}, (9, 9), FrozenUserType('SG', 100100, {'321', '123'}),
+                        [1, 2], {1, 2}, {1: 1, 2: 2}, (8, 8), NonFrozenUserType('SG', 100100)
+        ])
+
+        node1.flush()
+        cluster.stop()
+
+        [(out, error, rc)] = node1.run_sstabledump(keyspace='ks', column_families=['cf'])
+        debug(error)
+
+        out = json.loads(out)
+        debug(out)
+        self.assertEqual(1, len(out))
+        self.assertEqual(out[0]['partition']['key'], ['1'])
+
+        cells = out[0]['rows'][0]['cells']
+        # frozen list
+        self.assertEqual(cells[0]['name'], 'list_f')
+        self.assertEqual(cells[0]['value'], [1, 2, 3])
+        # frozen map
+        self.assertEqual(cells[1]['name'], 'map_f')
+        self.assertEqual(cells[1]['value'], {'1': 1, '2': 2, '3': 3})
+        # frozen set
+        self.assertEqual(cells[2]['name'], 'set_f')
+        self.assertEqual(cells[2]['value'], [1, 2, 3])
+        # frozen tuple
+        self.assertEqual(cells[3]['name'], 'tuple_f')
+        self.assertEqual(cells[3]['value'], [9, 9])
+        # non frozen tuple
+        self.assertEqual(cells[4]['name'], 'tuple_v')
+        self.assertEqual(cells[4]['value'], [8, 8])
+        # frozen udt
+        self.assertEqual(cells[5]['name'], 'user_type_f')
+        self.assertEqual(cells[5]['value'], {'city': 'SG', 'postcode': 100100, 'phones': ['123', '321']})
+        # non frozen list
+        self.assertIsNotNone(cells[6]['deletion_info'])
+        self.assertEqual(cells[6]['name'], 'list_v')
+        self.assertIsNotNone(cells[7]['path'])
+        self.assertEqual(cells[7]['name'], 'list_v')
+        self.assertEqual(cells[7]['value'], 1)
+        self.assertIsNotNone(cells[8]['path'])
+        self.assertEqual(cells[8]['name'], 'list_v')
+        self.assertEqual(cells[8]['value'], 2)
+        # non frozen map
+        self.assertIsNotNone(cells[9]['deletion_info'])
+        self.assertEqual(cells[9]['name'], 'map_v')
+        self.assertEqual(cells[10]['name'], 'map_v')
+        self.assertEqual(cells[10]['value'], 1)
+        self.assertEqual(cells[10]['path'], ['1'])
+        self.assertEqual(cells[11]['name'], 'map_v')
+        self.assertEqual(cells[11]['value'], 2)
+        self.assertEqual(cells[11]['path'], ['2'])
+        # non frozen set
+        self.assertIsNotNone(cells[12]['deletion_info'])
+        self.assertEqual(cells[12]['name'], 'set_v')
+        self.assertEqual(cells[13]['name'], 'set_v')
+        self.assertEqual(cells[13]['value'], '')
+        self.assertEqual(cells[13]['path'], ['1'])
+        self.assertEqual(cells[14]['name'], 'set_v')
+        self.assertEqual(cells[14]['value'], '')
+        self.assertEqual(cells[14]['path'], ['2'])
+        # non frozen udt
+        self.assertIsNotNone(cells[15]['deletion_info'])
+        self.assertEqual(cells[15]['name'], 'user_type_v')
+        self.assertEqual(cells[16]['name'], 'user_type_v')
+        self.assertEqual(cells[16]['value'], 'SG')
+        self.assertEqual(cells[16]['path'], ['city'])
+        self.assertEqual(cells[17]['name'], 'user_type_v')
+        self.assertEqual(cells[17]['value'], 100100)
+        self.assertEqual(cells[17]['path'], ['postcode'])
 
     def _check_stderr_error(self, error):
         acceptable = ["Max sstable size of", "Consider adding more capacity", "JNA link failure", "Class JavaLaunchHelper is implemented in both"]
