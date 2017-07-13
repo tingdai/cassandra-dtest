@@ -1,3 +1,5 @@
+## Warning: You should be committing to the ASF dtest repo, not here. Mirror at github.com/apache/cassandra-dtest.
+
 Cassandra Distributed Tests
 ===========================
 
